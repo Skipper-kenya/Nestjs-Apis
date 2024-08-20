@@ -21,10 +21,12 @@ git clone https://github.com/your-username/repository-name.git
 cd repository-name
 npm install
 
-📈 Updates
+```
+
+## 📈 Updates
 I will be updating this repository from time to time with new concepts and improvements. Keep an eye out for new branches and releases!
 
-🤝 Contributing
+ ## 🤝 Contributing
 Contributions are welcome! If you'd like to add new features or improve the existing ones, feel free to fork the repository and submit a pull request.
 
 Fork the repository
@@ -34,5 +36,5 @@ Push to the branch (git push origin feature/YourFeature)
 Open a pull request
 
 
-📝 License
+## 📝 License
 This project is licensed under the MIT License - see the LICENSE file for details.
