@@ -1,5 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import axios from 'axios';
+import { Response, json } from 'express';
+import { StkCallbackResponse } from './payment.controller';
+import { InjectModel } from '@nestjs/mongoose';
+import { PaymentDetails } from './schema/payment.schema';
+import { Model } from 'mongoose';
 const request = require('request');
 
 interface TokenResponse {
@@ -9,6 +14,11 @@ interface TokenResponse {
 
 @Injectable()
 export class PaymentService {
+  constructor(
+    @InjectModel(PaymentDetails.name)
+    private readonly paymentModel: Model<PaymentDetails>,
+  ) {}
+
   private url =
     'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest';
   private ConsumerKey = process.env.CONSUMERKEY;
@@ -65,7 +75,7 @@ export class PaymentService {
     return Buffer.from(shortCode + passkey + timestamp).toString('base64');
   }
 
-  async handleStkPush(details: any): Promise<any> {
+  async handleStkPush(details: any, res): Promise<any> {
     try {
       const { PhoneNo: PhoneNumber, Amount } = details;
 
@@ -91,7 +101,7 @@ export class PaymentService {
             PartyA: 254745634043,
             PartyB: Number(this.shortcode),
             PhoneNumber: 254745634043,
-            CallBackURL: this.callbackUrl,
+            CallBackURL: `${this.callbackUrl}/payment/callback`,
             AccountReference: 'E-Commerce Order',
             TransactionDesc: 'Order Payment',
           },
@@ -101,8 +111,9 @@ export class PaymentService {
             console.log(err.message);
             return err.message;
           } else {
-            console.log(body);
-            return body;
+            return res.status(HttpStatus.OK).json({
+              body: body,
+            });
           }
         },
       );
@@ -111,7 +122,61 @@ export class PaymentService {
     }
   }
 
-  handleCallback(details: any) {
-    console.log('i have been hit amigo');
+  async handleCallback(details: any, res: Response): Promise<any> {
+    try {
+      const { stkCallback } = details.Body;
+
+      const { ResultCode, MerchantRequestID, CheckoutRequestID, ResultDesc } =
+        stkCallback;
+
+      if (ResultCode == 0) {
+        if (stkCallback && stkCallback.CallbackMetadata) {
+          const metadataItems = stkCallback.CallbackMetadata.Item;
+
+          const amount = metadataItems.find(
+            (item: any) => item.Name === 'Amount',
+          )?.Value;
+          const receiptNumber = metadataItems.find(
+            (item: any) => item.Name === 'MpesaReceiptNumber',
+          )?.Value;
+          const transactionDate = metadataItems.find(
+            (item: any) => item.Name === 'TransactionDate',
+          )?.Value;
+          const phoneNumber = metadataItems.find(
+            (item: any) => item.Name === 'PhoneNumber',
+          )?.Value;
+
+          const data = {
+            MerchantRequestID,
+            CheckoutRequestID,
+            ResultDesc,
+            Amount: amount,
+            MpesaReceiptNumber: receiptNumber,
+            TransactionDate: transactionDate,
+            PhoneNumber: phoneNumber,
+          };
+
+          //db
+
+          const newTransaction = new this.paymentModel(data);
+          await newTransaction.save();
+
+          return res.status(HttpStatus.OK).json({
+            message: ResultDesc,
+            success: true,
+            data,
+          });
+        }
+      } else {
+        res.status(HttpStatus.OK).json({
+          message: ResultDesc,
+          success: false,
+        });
+      }
+    } catch (error) {
+      return res
+        .status(HttpStatus.BAD_REQUEST)
+        .json({ success: false, message: 'invalid data please try again' });
+    }
   }
 }
